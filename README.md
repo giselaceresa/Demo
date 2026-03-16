@@ -1,47 +1,51 @@
-# Reporte de Administración - Demo Dashboard
+# Administration Report – Demo Dashboard
 
-Este proyecto es una demostración de un Dashboard desarrollado en **Google Apps Script (GAS)**. Se conecta directamente a un archivo de Google Sheets y provee un panel de administración visual y dinámico para el análisis de ventas, gastos y productos.
+This project is a demonstration of a Dashboard developed in Google Apps Script (GAS). It connects directly to a Google Sheets file and provides a visual and dynamic administration panel for analyzing sales, expenses, and products.
 
-## Características
+## Features
 
-- **Panel Interactivo:** Visualización en un cuadro de diálogo dentro de Google Sheets usando `HtmlService`.
-- **Rápido y Dinámico:** Uso de `google.script.run` para traer información de manera asíncrona mediante llamadas al servidor de GAS, sin bloquear la UI.
-- **Diseño Moderno:** Interfaz creada con **Bootstrap 5**, garantizando una experiencia visual limpia y responsiva.
-- **Múltiples Fuentes de Datos:** Lectura e integración cruzada de múltiples hojas (Ventas, Gastos, Productos).
+Interactive Panel: Displayed in a dialog within Google Sheets using HtmlService.
 
-## Estructura del Proyecto
+Fast and Dynamic: Uses google.script.run to retrieve information asynchronously through GAS server calls, without blocking the UI.
+
+Modern Design: Interface built with Bootstrap 5, ensuring a clean and responsive visual experience.
+
+Multiple Data Sources: Reads and integrates data from multiple sheets (Sales, Expenses, Products).
+
+## Project Structure
 
 ```text
 📁 src/
- ├── Code.gs      # Código de servidor (funciones onOpen, mostrarTableroLateral, obtenerDatos).
- └── index.html   # Código de cliente (Estructura HTML, estilos CSS y lógica JavaScript).
+ ├── Code.gs      # Server code (onOpen, showSidebar, getData functions).
+ └── index.html   # Client code (HTML structure, CSS styles, and JavaScript logic).
 ```
 
-## Requisitos
-Para probar o implementar este código:
-1. Una hoja de cálculo (Google Sheet) que contenga estrictamente las pestañas llamadas:
-   - `Ventas`
-   - `Gastos`
-   - `Productos`
-2. Google Apps Script asociado a dicha hoja de cálculo (Extensiones > Apps Script).
+## Requirements
 
-## Instalación
+To test or implement this code:
+1. A Google Spreadsheet that strictly contains the following tabs:
+   - `Sales`
+   - `Expenses`
+   - `Products`
+2. A Google Apps Script project linked to that spreadsheet (Extensions > Apps Script).
 
-1. Clona o descarga el repositorio:
+## Installation
+
+1. Clone or download the repository:
    ```bash
    git clone https://github.com/giselaceresa/Demo.git
    ```
-2. Puedes desplegar este código utilizando herramientas como [clasp](https://github.com/google/clasp). Si usas `clasp`:
+2. You can deploy this code using tools such as clasp. If you use [clasp](https://github.com/google/clasp):
    ```bash
-   # Inicia el proyecto en el directorio raíz o copialos en el directorio local a enviar al id del script:
-   clasp push
+   # Initialize the project in the root directory or copy the files into the local directory linked to the script ID.
    ```
-3. Alternativamente, copia y pega manualmente el contenido de `src/Code.gs` y `src/index.html` en el editor de Apps Script de tu Google Sheet.
-4. Recarga tu hoja de cálculo, y aparecerá el nuevo menú **📊 Dashboard > Abrir Panel**.
 
-## Notas Técnicas
-- El proyecto utiliza manejo de errores en lado del cliente y del servidor (en caso de que falten pestañas o falle el tipeo de un dato).
-- Las fechas en la hoja de cálculo son convertidas utilizando `Utilities.formatDate` para evitar inconsistencias de zonas horarias al serializar objetos Date en el paso hacia el cliente.
+Alternatively, manually copy and paste the contents of `src/Code.gs` and `src/index.html` into the Apps Script editor of your Google Sheet.
 
----
-*Desarrollado para fines de demostración dentro del entorno de automatizaciones de Google Workspace.*
+Reload your spreadsheet, and the new menu `📊 Dashboard > Open Panel` will appear.
+
+## Technical Notes
+
+The project includes error handling on both the client and server sides (in case sheets are missing or data typing fails).
+
+Dates in the spreadsheet are converted using `Utilities.formatDate` to avoid time zone inconsistencies when serializing `Date` objects and sending them to the client.
