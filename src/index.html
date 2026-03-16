@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reporte de Administración</title>
+  <!-- Bootstrap CSS para estilo y diseño base -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .header {
+      background-color: #0f172a;
+      color: #fff;
+      padding: 1rem 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    
+    .card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    
+    .card:hover {
+      transform: translateY(-2px);
+    }
+
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+    }
+    
+    .spinner-border {
+      width: 3rem;
+      height: 3rem;
+      color: #3b82f6;
+    }
+
+    .table thead th {
+      background-color: #f1f5f9;
+      border-bottom: 2px solid #e2e8f0;
+      font-weight: 600;
+      color: #475569;
+    }
+    
+    .table-container {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .alert-error {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #f87171;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header d-flex justify-content-between align-items-center mb-4">
+    <h4 class="m-0 fw-bold">📊 Dashboard de Administración</h4>
+  </header>
+
+  <div class="container-fluid px-4">
+    <!-- Pantalla de Carga -->
+    <div id="loading">
+      <div class="spinner-border mb-3" role="status"></div>
+      <h5 class="text-secondary">Cargando datos desde la hoja...</h5>
+    </div>
+
+    <!-- Mensaje de Error (oculto por defecto) -->
+    <div id="error-message" class="alert alert-error d-none" role="alert"></div>
+
+    <!-- Contenido del Dashboard (oculto por defecto) -->
+    <div id="dashboard-content" class="d-none">
+      
+      <!-- Resumen Cards -->
+      <div class="row g-4 mb-4">
+        <!-- Tarjeta Ventas -->
+        <div class="col-md-4">
+          <div class="card h-100 p-4 border-start border-primary border-4">
+            <h6 class="text-muted fw-bold">TOTAL REGISTROS VENTAS</h6>
+            <h2 id="total-ventas" class="mb-0 fw-bold text-primary">-</h2>
+          </div>
+        </div>
+        <!-- Tarjeta Gastos -->
+        <div class="col-md-4">
+          <div class="card h-100 p-4 border-start border-danger border-4">
+            <h6 class="text-muted fw-bold">TOTAL REGISTROS GASTOS</h6>
+            <h2 id="total-gastos" class="mb-0 fw-bold text-danger">-</h2>
+          </div>
+        </div>
+        <!-- Tarjeta Productos -->
+        <div class="col-md-4">
+          <div class="card h-100 p-4 border-start border-success border-4">
+            <h6 class="text-muted fw-bold">TOTAL DE PRODUCTOS</h6>
+            <h2 id="total-productos" class="mb-0 fw-bold text-success">-</h2>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tablas de Datos -->
+      <div class="row g-4">
+        <!-- Tabla Resumen de Ventas -->
+        <div class="col-lg-6">
+          <div class="card p-3 h-100">
+            <h5 class="fw-bold mb-3">Últimas Ventas (Muestra)</h5>
+            <div class="table-responsive table-container">
+              <table class="table table-hover mb-0" id="tabla-ventas">
+                <thead>
+                  <tr id="ventas-head">
+                    <th>Cargando...</th>
+                  </tr>
+                </thead>
+                <tbody id="ventas-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Tabla Resumen de Gastos -->
+        <div class="col-lg-6">
+          <div class="card p-3 h-100">
+            <h5 class="fw-bold mb-3">Últimos Gastos (Muestra)</h5>
+            <div class="table-responsive table-container">
+              <table class="table table-hover mb-0" id="tabla-gastos">
+                <thead>
+                  <tr id="gastos-head">
+                    <th>Cargando...</th>
+                  </tr>
+                </thead>
+                <tbody id="gastos-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Iniciar llamada al servidor en cuanto cargue la página
+    document.addEventListener("DOMContentLoaded", () => {
+      google.script.run
+        .withSuccessHandler(procesarDatos)
+        .withFailureHandler(mostrarError)
+        .obtenerDatos();
+    });
+
+    function procesarDatos(respuesta) {
+      const loading = document.getElementById('loading');
+      const dashboard = document.getElementById('dashboard-content');
+      const errorMsg = document.getElementById('error-message');
+
+      loading.classList.add('d-none');
+
+      if (respuesta && respuesta.error) {
+        mostrarError(respuesta.error);
+        return;
+      }
+
+      // Mostrar dashboard
+      dashboard.classList.remove('d-none');
+
+      // Procesar Ventas
+      const ventas = respuesta.ventas || [];
+      document.getElementById('total-ventas').innerText = ventas.length > 1 ? ventas.length - 1 : 0;
+      dibujarTabla('ventas', ventas);
+
+      // Procesar Gastos
+      const gastos = respuesta.gastos || [];
+      document.getElementById('total-gastos').innerText = gastos.length > 1 ? gastos.length - 1 : 0;
+      dibujarTabla('gastos', gastos);
+
+      // Procesar Productos
+      const prod = respuesta.productos || [];
+      document.getElementById('total-productos').innerText = prod.length > 1 ? prod.length - 1 : 0;
+    }
+
+    function dibujarTabla(tipo, data) {
+      const thead = document.getElementById(tipo + '-head');
+      const tbody = document.getElementById(tipo + '-body');
+      
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      if (!data || data.length === 0) {
+        thead.innerHTML = '<th>No hay datos</th>';
+        return;
+      }
+
+      // Render headers (tomamos solo las primeras 4 columnas como muestra)
+      const headers = data[0];
+      const limitCols = Math.min(headers.length, 4);
+
+      for (let i = 0; i < limitCols; i++) {
+        const th = document.createElement('th');
+        th.innerText = headers[i];
+        thead.appendChild(th);
+      }
+
+      // Render rows (tomamos hasta 10 filas de muestra, invirtiendo para ver las últimas)
+      const startRow = Math.max(1, data.length - 10);
+      for (let i = data.length - 1; i >= startRow; i--) {
+        const tr = document.createElement('tr');
+        for (let j = 0; j < limitCols; j++) {
+          const td = document.createElement('td');
+          td.innerText = data[i][j];
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    function mostrarError(error) {
+      const loading = document.getElementById('loading');
+      const errorMsg = document.getElementById('error-message');
+      
+      loading.classList.add('d-none');
+      errorMsg.classList.remove('d-none');
+      errorMsg.innerText = "Error: " + error;
+    }
+  </script>
+</body>
+</html>

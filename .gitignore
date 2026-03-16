@@ -1,0 +1,5 @@
+node_modules/
+.clasp.json
+.vscode/
+npm-debug.log
+.DS_Store

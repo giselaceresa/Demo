@@ -1,0 +1,16 @@
+{
+  "name": "dashboard-demo",
+  "version": "1.0.0",
+  "description": "Reporte de Administración Dashboard para Google Sheets",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "deploy": "clasp deploy"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  },
+  "author": "Gisela Ceresa",
+  "license": "ISC"
+}
