@@ -4,10 +4,10 @@ Este proyecto es una demostración de un Dashboard desarrollado en **Google Apps
 
 ## Características
 
-- 📊 **Panel Interactivo:** Visualización en un cuadro de diálogo dentro de Google Sheets usando `HtmlService`.
-- ⚡ **Rápido y Dinámico:** Uso de `google.script.run` para traer información de manera asíncrona mediante llamadas al servidor de GAS, sin bloquear la UI.
-- 🎨 **Diseño Moderno:** Interfaz creada con **Bootstrap 5**, garantizando una experiencia visual limpia y responsiva.
-- 📦 **Múltiples Fuentes de Datos:** Lectura e integración cruzada de múltiples hojas (Ventas, Gastos, Productos).
+- **Panel Interactivo:** Visualización en un cuadro de diálogo dentro de Google Sheets usando `HtmlService`.
+- **Rápido y Dinámico:** Uso de `google.script.run` para traer información de manera asíncrona mediante llamadas al servidor de GAS, sin bloquear la UI.
+- **Diseño Moderno:** Interfaz creada con **Bootstrap 5**, garantizando una experiencia visual limpia y responsiva.
+- **Múltiples Fuentes de Datos:** Lectura e integración cruzada de múltiples hojas (Ventas, Gastos, Productos).
 
 ## Estructura del Proyecto
 
