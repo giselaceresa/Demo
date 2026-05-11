@@ -1,49 +1,70 @@
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('📊 Dashboard')
-    .addItem('Abrir Panel', 'mostrarTableroLateral')
-    .addToUi();
+function doGet() {
+  return HtmlService.createTemplateFromFile('index')
+      .evaluate()
+      .setTitle('P&L Dashboard')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-function mostrarTableroLateral() {
-  var html = HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('Reporte de Administración')
-    .setWidth(1100)
-    .setHeight(750)
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Reporte de Administración');
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('📊 Dashboard P&L')
+      .addItem('Abrir Dashboard', 'abrirDashboard')
+      .addToUi();
+}
+
+function abrirDashboard() {
+  const html = HtmlService.createTemplateFromFile('index')
+      .evaluate()
+      .setTitle('Dashboard de Administración')
+      .setWidth(1200)
+      .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Dashboard de Administración');
+}
+
+/**
+ * Filtra filas vacías para evitar procesar celdas con formato pero sin contenido.
+ */
+function limpiarDatos(values) {
+  if (!values || values.length === 0) return [];
+  const headers = values[0];
+  const rows = values.slice(1).filter(row => {
+    return row.slice(0, 5).some(cell => cell !== '' && cell !== null && cell !== undefined);
+  });
+  return [headers, ...rows];
 }
 
 function obtenerDatos() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    const sVentas   = ss.getSheetByName("Ventas");
-    const sGastos   = ss.getSheetByName("Gastos");
-    const sProd     = ss.getSheetByName("Productos");
-
-    if (!sVentas || !sGastos || !sProd) {
-      return { error: "Faltan pestañas. Deben llamarse exactamente: Ventas, Gastos, Productos" };
+    
+    const sheetProductos = ss.getSheetByName('Productos');
+    const sheetVentas = ss.getSheetByName('Ventas');
+    const sheetGastos = ss.getSheetByName('Gastos');
+    
+    if (!sheetProductos || !sheetVentas || !sheetGastos) {
+      let missing = [];
+      if (!sheetProductos) missing.push('Productos');
+      if (!sheetVentas) missing.push('Ventas');
+      if (!sheetGastos) missing.push('Gastos');
+      return { error: 'Faltan las siguientes hojas: ' + missing.join(', ') };
     }
-
-    // getValues() devuelve tipos nativos: Number, Date, String, Boolean
-    // NO convertir a string — pasar los valores crudos directamente
-    // Las fechas se serializan automáticamente como ISO string al pasar por JSON
-    const toClean = (grid) => grid.map(row =>
-      row.map(cell => {
-        if (cell === null || cell === undefined) return "";
-        if (cell instanceof Date) return Utilities.formatDate(cell, Session.getScriptTimeZone(), "dd/MM/yyyy");
-        return cell; // números y strings se pasan tal cual
-      })
-    );
-
+    
+    const productos = limpiarDatos(sheetProductos.getDataRange().getValues());
+    const ventas = limpiarDatos(sheetVentas.getDataRange().getValues());
+    const gastos = limpiarDatos(sheetGastos.getDataRange().getValues());
+    
     return {
-      ventas:    toClean(sVentas.getDataRange().getValues()),
-      gastos:    toClean(sGastos.getDataRange().getValues()),
-      productos: toClean(sProd.getDataRange().getValues())
+      productos: productos,
+      ventas: ventas,
+      gastos: gastos,
+      timestamp: new Date().getTime()
     };
-
   } catch (e) {
-    return { error: "Error en servidor: " + e.toString() };
+    return { error: 'Error en el servidor: ' + e.message };
   }
 }

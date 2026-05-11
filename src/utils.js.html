@@ -1,0 +1,12 @@
+<script>
+const $ = id => document.getElementById(id);
+const log = msg => $('statusBar').innerText = '- ' + msg;
+const fmt = n => '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
+const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '0%';
+const pctN = (a, b) => b ? (a / b * 100) : 0;
+
+let _ctx = null;
+
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,80)+'px'; }
+function handleKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuestion();} }
+</script>

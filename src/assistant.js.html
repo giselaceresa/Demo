@@ -1,0 +1,239 @@
+<script>
+// ══════════════════════════════════════════════════════════════
+//  MOTOR DE RESPUESTAS SIN IA
+// ══════════════════════════════════════════════════════════════
+function responder(pregunta) {
+  if (!_ctx) return 'Los datos todavia se estan cargando. Esperá un momento.';
+  const d = _ctx;
+  const q = pregunta.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[?!]/g,'');
+  const tiene = (...w) => w.some(x => q.includes(x));
+
+  const G = v => `<span class="chip-green">${v}</span>`;
+  const R = v => `<span class="chip-red">${v}</span>`;
+  const A = v => `<span class="chip-amber">${v}</span>`;
+  const B = v => `<span class="chip-blue">${v}</span>`;
+  const li = items => '<ul>' + items.map(i => `<li>${i}</li>`).join('') + '</ul>';
+
+  if (tiene('salud','resumen','como esta','estado','panorama','general','situacion')) {
+    return `La situacion financiera es ${d.utilNeta >= 0 ? G('positiva') : R('negativa')}.\n\n` +
+      li([
+        `Ingresos: ${B(fmt(d.totalIngresos))}`,
+        `Ganancia bruta: ${G(fmt(d.ganBruta))} (margen ${d.margenBruto >= 30 ? G(d.margenBruto.toFixed(1)+'%') : A(d.margenBruto.toFixed(1)+'%')})`,
+        `Gastos operativos: ${R(fmt(d.totalGastos))}`,
+        `Utilidad neta: ${d.utilNeta >= 0 ? G(fmt(d.utilNeta)) : R('-'+fmt(Math.abs(d.utilNeta)))}`,
+        `PE: ${d.peBrecha >= 0 ? G('superado') : R('no alcanzado')} (${d.peCobertura.toFixed(0)}% cubierto)`
+      ]);
+  }
+
+  if (tiene('ingreso','venta total','cuanto vendi','factur')) {
+    const mesTop = Object.entries(d.byMes).sort((a,b)=>b[1]-a[1])[0];
+    const meses = Object.entries(d.byMes).sort();
+    return `Los ingresos totales son ${B(fmt(d.totalIngresos))}.\n\n` +
+      li([
+        ...meses.map(([m,v]) => `${m}: ${fmt(v)}`),
+        mesTop ? `Mejor mes: ${G(mesTop[0])} con ${G(fmt(mesTop[1]))}` : ''
+      ].filter(Boolean));
+  }
+
+  if (tiene('utilidad','ganancia neta','neta','resultado','plata','gano','gane')) {
+    const rentab = pctN(d.utilNeta, d.totalIngresos).toFixed(1);
+    return `La utilidad neta es ${d.utilNeta >= 0 ? G(fmt(d.utilNeta)) : R('-'+fmt(Math.abs(d.utilNeta)))}.\n\nRentabilidad: ${d.utilNeta >= 0 ? G(rentab+'%') : R(rentab+'%')}\n\n` +
+      (d.utilNeta < 0
+        ? `Los gastos (${R(fmt(d.totalGastos))}) superan la ganancia bruta (${fmt(d.ganBruta)}). El mayor gasto es ${R(d.topGasto[0])} con ${R(fmt(d.topGasto[1]||0))}.`
+        : `Por cada $100 que ingresa, quedan ${G('$'+rentab)} de ganancia neta.`);
+  }
+
+  if (tiene('margen bruto','margen','ganancia bruta','bruta')) {
+    const mb = d.margenBruto.toFixed(1);
+    const eval_ = d.margenBruto >= 35 ? G('saludable') : d.margenBruto >= 20 ? A('aceptable') : R('bajo');
+    return `El margen bruto es ${d.margenBruto >= 35 ? G(mb+'%') : d.margenBruto >= 20 ? A(mb+'%') : R(mb+'%')} - ${eval_}.\n\n` +
+      li([
+        `Ingresos: ${fmt(d.totalIngresos)}`,
+        `Costo de ventas: ${R(fmt(d.totalCostoVentas))} (${pct(d.totalCostoVentas, d.totalIngresos)})`,
+        `Ganancia bruta: ${G(fmt(d.ganBruta))}`,
+      ]) + (d.margenBruto < 30 ? '\n\nPara mejorar: revisar precios o renegociar costos de compra.' : '');
+  }
+
+  if (tiene('equilibrio','break even','minimo','cubrir')) {
+    return `El punto de equilibrio es ${B(fmt(d.puntEquilibrio))}.\n\n` +
+      li([
+        `Ventas actuales: ${fmt(d.totalIngresos)}`,
+        `Costos fijos: ${R(fmt(d.totalGastos))}`,
+        `Margen de contribucion: ${B((d.margenContrib*100).toFixed(1)+'%')}`,
+        d.peBrecha >= 0
+          ? `Estado: ${G('SUPERADO')} - margen de seguridad de ${G(fmt(d.peBrecha))}`
+          : `Estado: ${R('NO ALCANZADO')} - faltan ${R(fmt(Math.abs(d.peBrecha)))}`
+      ]);
+  }
+
+  if (tiene('recortar','bajar gasto','reducir','mayor gasto','principal gasto','mas gasto')) {
+    const top3 = Object.entries(d.byGastoCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    return `Los 3 gastos mas altos son:\n\n` +
+      li(top3.map(([cat, monto], i) =>
+        `${i===0?'<strong>'+cat+'</strong>':cat}: ${R(fmt(monto))} (${pct(monto, d.totalGastos)})`
+      )) +
+      `\n\nSi reducis ${A(top3[0][0])} un 10%, la utilidad mejora ${G(fmt(top3[0][1]*0.1))}.`;
+  }
+
+  if (tiene('gasto','egreso','costo fijo','gasta')) {
+    const gastosSorted = Object.entries(d.byGastoCat).sort((a,b)=>b[1]-a[1]);
+    return `Gastos operativos totales: ${R(fmt(d.totalGastos))}.\n\n` +
+      li(gastosSorted.map(([cat, monto]) => `${cat}: ${R(fmt(monto))} (${pct(monto, d.totalGastos)})`));
+  }
+
+  if (tiene('mas vendido','mejor producto','vende mas','mayor venta','top producto')) {
+    return `El producto mas vendido es ${G(d.topProd.nombre||'-')}.\n\n` +
+      li([
+        `Ventas: ${G(fmt(d.topProd.venta||0))}`,
+        `Ganancia: ${G(fmt(d.topProd.ganancia||0))}`,
+        `Margen: ${G((d.topProd.margen||0).toFixed(1)+'%')}`,
+        `Unidades: ${B((d.topProd.cantidad||0)+' uds')}`,
+      ]);
+  }
+
+  if (tiene('rentable','mayor margen','mejor margen','mas margen')) {
+    return `El producto mas rentable es ${G(d.topRentable.nombre||'-')}.\n\n` +
+      li([
+        `Margen: ${G((d.topRentable.margen||0).toFixed(1)+'%')}`,
+        `Ganancia por unidad: ${G(fmt((d.topRentable.ganancia||0)/(d.topRentable.cantidad||1)))}`,
+        `Ventas totales: ${fmt(d.topRentable.venta||0)}`,
+      ]) + `\n\nPriorizar la venta de este producto mejora la rentabilidad general.`;
+  }
+
+  if (tiene('menos rentable','peor margen','peor producto','bajo margen')) {
+    return `El producto con menor margen es ${R(d.bottomRent.nombre||'-')}.\n\n` +
+      li([
+        `Margen: ${R((d.bottomRent.margen||0).toFixed(1)+'%')}`,
+        `Ventas: ${fmt(d.bottomRent.venta||0)}`,
+        `Ganancia: ${fmt(d.bottomRent.ganancia||0)}`,
+      ]) + `\n\nConsiderar subir el precio o revisar el costo de compra.`;
+  }
+
+  if (tiene('producto','catalogo','lista')) {
+    return `Ranking de productos por ventas:\n\n` +
+      li(d.prodList.slice(0,6).map((p,i) =>
+        `${i+1}. ${p.nombre}: ${fmt(p.venta)} - ${p.margen>=30?G(p.margen.toFixed(1)+'%'):p.margen>=20?A(p.margen.toFixed(1)+'%'):R(p.margen.toFixed(1)+'%')}`
+      ));
+  }
+
+  if (tiene('mes','mensual','mejor mes','peor mes')) {
+    const mesesData = Object.entries(d.byMes).sort((a,b)=>b[1]-a[1]);
+    return `Ventas por mes:\n\n` +
+      li(mesesData.map(([m,v], i) => `${m}: ${i===0?G(fmt(v)):fmt(v)}${i===0?' (mejor mes)':''}`));
+  }
+
+  if (tiene('accion','recomend','mejorar','que puedo hacer','consejo','suger')) {
+    const rec = [];
+    if (d.margenBruto < 30) rec.push(`Margen bruto bajo (${d.margenBruto.toFixed(1)+'%'}): revisar precios o costos`);
+    const sueldos = d.byGastoCat['Sueldos']||0;
+    if (sueldos/d.totalGastos > 0.45) rec.push(`Sueldos = ${pct(sueldos,d.totalGastos)} de gastos: evaluar productividad`);
+    if (d.topRentable.nombre) rec.push(`Potenciar "${d.topRentable.nombre}" (margen ${d.topRentable.margen.toFixed(1)+'%'}) - el mas rentable`);
+    if (d.bottomRent.nombre) rec.push(`Revisar "${d.bottomRent.nombre}" (margen ${d.bottomRent.margen.toFixed(1)+'%'}) - el menos rentable`);
+    rec.push(d.peBrecha < 0
+      ? `Faltan ${fmt(Math.abs(d.peBrecha))} para cubrir costos`
+      : `PE superado - margen de seguridad de ${fmt(d.peBrecha)}`);
+    return `Recomendaciones basadas en los datos:\n\n` + li(rec);
+  }
+
+  if (tiene('riesgo','problema','alerta','peligro')) {
+    const riesgos = [];
+    if (d.utilNeta < 0) riesgos.push(`Utilidad neta negativa: ${R(fmt(d.utilNeta))}`);
+    if (d.margenBruto < 25) riesgos.push(`Margen bruto bajo: ${R(d.margenBruto.toFixed(1)+'%')}`);
+    if (d.peBrecha < 0) riesgos.push(`Punto de equilibrio no alcanzado: faltan ${R(fmt(Math.abs(d.peBrecha)))}`);
+    const sueldos = d.byGastoCat['Sueldos']||0;
+    if (sueldos/d.totalGastos > 0.5) riesgos.push(`Sueldos = ${A(pct(sueldos,d.totalGastos))} de los gastos`);
+    if (riesgos.length === 0) riesgos.push(`No se detectan riesgos criticos. El negocio esta ${G('en zona saludable')}.`);
+    return `Alertas en los datos:\n\n` + li(riesgos);
+  }
+
+  if (tiene('costo de venta','costo mercaderia','costo variable')) {
+    return `El costo de ventas es ${R(fmt(d.totalCostoVentas))}, el ${R(pct(d.totalCostoVentas, d.totalIngresos))} de los ingresos.\n\n` +
+      li([
+        `Por cada $100 vendido, ${R('$'+(d.ratioCV*100).toFixed(1))} es costo de mercaderia`,
+        `Margen de contribucion: ${G((d.margenContrib*100).toFixed(1)+'%')}`,
+      ]);
+  }
+
+  return `No encontre una respuesta exacta. Proba con:\n\n` +
+    li(['"como esta el margen"','"cual es la utilidad neta"','"que producto es mas rentable"','"cuales son los gastos"','"dame recomendaciones"','"punto de equilibrio"']);
+}
+
+// ══════════════════════════════════
+//  CHAT UI
+// ══════════════════════════════════
+const SUGGESTED_QUESTIONS = [
+  'Como esta la salud financiera?',
+  'Cual es la utilidad neta?',
+  'Cuanto es el margen bruto?',
+  'Que producto es mas rentable?',
+  'Cuales son los gastos mas altos?',
+  'Se alcanzo el punto de equilibrio?',
+  'Que producto tiene menos margen?',
+  'Dame recomendaciones',
+  'En que mes se vendio mas?',
+  'Cuales son los riesgos?',
+];
+
+function buildSuggestedChips() {
+  const grid = $('sqGrid');
+  grid.innerHTML = '';
+  SUGGESTED_QUESTIONS.forEach(q => {
+    const chip = document.createElement('button');
+    chip.className = 'sq-chip';
+    chip.textContent = q;
+    chip.onclick = () => { $('aiInput').value = q; sendQuestion(); };
+    grid.appendChild(chip);
+  });
+}
+
+function clearChat() {
+  $('chatMessages').innerHTML = `
+    <div class="ai-welcome">
+      <div class="ai-welcome-icon">📊</div>
+      <h3>Hola, soy tu asistente financiero</h3>
+      <p>Respondo directamente con los numeros de tu negocio. Sin IA, sin costo, sin internet.</p>
+    </div>`;
+  $('suggestedQs').style.display = '';
+  buildSuggestedChips();
+}
+
+let aiOpen = false;
+function toggleAI() {
+  aiOpen = !aiOpen;
+  $('aiPanel').classList.toggle('open', aiOpen);
+  $('aiToggleBtn').classList.toggle('active', aiOpen);
+  $('aiToggleBtn').innerHTML = aiOpen
+    ? 'x Cerrar Asistente'
+    : 'Consultar al Asistente';
+}
+
+function appendMsg(role, html) {
+  const chat = $('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  const av = document.createElement('div');
+  av.className = 'msg-avatar';
+  av.textContent = role === 'assistant' ? '📊' : 'Vos';
+  const bbl = document.createElement('div');
+  bbl.className = 'msg-bubble';
+  bbl.innerHTML = html.replace(/\n/g, '<br>');
+  div.appendChild(av); div.appendChild(bbl);
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function sendQuestion() {
+  const input = $('aiInput');
+  const question = input.value.trim();
+  if (!question) return;
+  input.value = ''; input.style.height = 'auto';
+  // Eliminamos la línea que oculta las sugerencias para permitir preguntas consecutivas
+  appendMsg('user', question);
+  setTimeout(() => appendMsg('assistant', responder(question)), 150);
+}
+
+// Initialize suggested chips
+buildSuggestedChips();
+</script>

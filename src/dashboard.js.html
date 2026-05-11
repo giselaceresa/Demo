@@ -1,0 +1,211 @@
+<script>
+// ══════════════════════════════════════════════
+//  DASHBOARD — carga datos desde Google Sheets
+// ══════════════════════════════════════════════
+function initDashboard() {
+  google.script.run
+    .withSuccessHandler(procesar)
+    .withFailureHandler(err => { 
+      log('Error: ' + err.message); 
+      $('loader').innerHTML = '<p style="color:#ef4444">Error: ' + err.message + '</p>'; 
+    })
+    .obtenerDatos();
+}
+
+function procesar(data) {
+  if (data.error) { 
+    log('Error: ' + data.error); 
+    $('loader').innerHTML = '<p style="color:#ef4444">' + data.error + '</p>'; 
+    return; 
+  }
+  log('Datos recibidos. Calculando...');
+  try {
+    const n = v => {
+      if (v===''||v===null||v===undefined) return 0;
+      if (typeof v==='number') return v;
+      const s = String(v).trim();
+      if (s.match(/^-?[\d.]+,\d{1,2}$/)) return parseFloat(s.replace(/\./g,'').replace(',','.')) || 0;
+      if (s.match(/^-?[\d,]+\.\d{1,2}$/)) return parseFloat(s.replace(/,/g,'')) || 0;
+      return parseFloat(s.replace(/[^0-9.-]+/g,'')) || 0;
+    };
+    
+    const col = (h,name) => h.findIndex(x => x.trim().toUpperCase()===name.trim().toUpperCase());
+    
+    const getMes = val => {
+      if (!val||val==='') return null;
+      let d;
+      try {
+        if (val instanceof Date||(typeof val==='object'&&val!==null)) { d=new Date(val); }
+        else {
+          const s=String(val).trim();
+          if (s.match(/^\d{4}-\d{2}-\d{2}/)) d=new Date(s);
+          else { 
+            const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); 
+            if(m){let[,dd,mm,yy]=m;if(yy.length===2)yy='20'+yy;d=new Date(+yy,+mm-1,+dd);}
+            else { d=new Date(s); }
+          }
+        }
+      } catch(e) { return null; }
+      if (!d||isNaN(d.getTime())) return null;
+      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    };
+
+    const pRows=data.productos, pH=pRows[0];
+    const iP_ID=col(pH,'ID_PRODUCTO'),iP_NOMBRE=col(pH,'NOMBRE_PRODUCTO'),iP_CAT=col(pH,'CATEGORIA'),iP_COSTO=col(pH,'COSTO_UNITARIO');
+    
+    if (iP_ID === -1 || iP_NOMBRE === -1) {
+      throw new Error('No se encontraron las columnas necesarias en la hoja "Productos" (ID_PRODUCTO, NOMBRE_PRODUCTO)');
+    }
+
+    const productos={};
+    pRows.slice(1).forEach(r=>{ if(!r[iP_ID])return; productos[r[iP_ID]]={nombre:r[iP_NOMBRE],categoria:r[iP_CAT],costo:n(r[iP_COSTO])}; });
+
+    const vRows=data.ventas, vH=vRows[0];
+    const iV_ID=col(vH,'ID_PRODUCTO'),iV_CANT=col(vH,'CANTIDAD'),iV_TOTAL=col(vH,'TOTAL_VENTA'),iV_FECHA=col(vH,'FECHA');
+    
+    if (iV_ID === -1 || iV_CANT === -1 || iV_TOTAL === -1) {
+      throw new Error('No se encontraron las columnas necesarias en la hoja "Ventas" (ID_PRODUCTO, CANTIDAD, TOTAL_VENTA)');
+    }
+
+    let totalIngresos=0, totalCostoVentas=0;
+    const byProduct={}, byCategoria={}, byMes={};
+    let ignoredVentas = 0;
+
+    vRows.slice(1).forEach(r=>{
+      const prodId=r[iV_ID]; if(!prodId) { ignoredVentas++; return; }
+      const prod=productos[prodId] || { nombre: 'Prod Desconocido ('+prodId+')', categoria: 'Sin categoria', costo: 0 };
+      const cant=n(r[iV_CANT]), total=n(r[iV_TOTAL]), costo=(prod.costo||0)*cant;
+      const nombre=prod.nombre, cat=prod.categoria;
+      
+      totalIngresos+=total; totalCostoVentas+=costo;
+      if(!byProduct[nombre])byProduct[nombre]={venta:0,costo:0,cantidad:0};
+      byProduct[nombre].venta+=total; byProduct[nombre].costo+=costo; byProduct[nombre].cantidad+=cant;
+      if(!byCategoria[cat])byCategoria[cat]={venta:0,costo:0};
+      byCategoria[cat].venta+=total; byCategoria[cat].costo+=costo;
+      const fecha=getMes(r[iV_FECHA])||'Sin fecha';
+      if(!byMes[fecha])byMes[fecha]=0; byMes[fecha]+=total;
+    });
+
+    const gRows=data.gastos, gH=gRows[0];
+    const iG_MONTO=col(gH,'MONTO'),iG_CAT=col(gH,'CATEGORIA'),iG_FECHA=col(gH,'FECHA');
+    
+    if (iG_MONTO === -1) {
+      throw new Error('No se encontró la columna "MONTO" en la hoja "Gastos"');
+    }
+
+    let totalGastos=0; const byGastoCat={};
+    gRows.slice(1).forEach(r=>{
+      const monto=n(r[iG_MONTO]),cat=r[iG_CAT]||'Otros';
+      totalGastos+=monto; if(!byGastoCat[cat])byGastoCat[cat]=0; byGastoCat[cat]+=monto;
+    });
+
+    const ganBruta=totalIngresos-totalCostoVentas, utilNeta=ganBruta-totalGastos;
+    const margenBruto=totalIngresos?(ganBruta/totalIngresos*100):0;
+    const prodList=Object.entries(byProduct).map(([nombre,d])=>({nombre,venta:d.venta,costo:d.costo,cantidad:d.cantidad,ganancia:d.venta-d.costo,margen:d.venta?(d.venta-d.costo)/d.venta*100:0})).sort((a,b)=>b.venta-a.venta);
+    const topProd=prodList[0]||{}, topRentable=[...prodList].sort((a,b)=>b.margen-a.margen)[0]||{};
+    const topVolumen=[...prodList].sort((a,b)=>b.cantidad-a.cantidad)[0]||{};
+    const topGasto=Object.entries(byGastoCat).sort((a,b)=>b[1]-a[1])[0]||[];
+    const bottomRent=[...prodList].sort((a,b)=>a.margen-b.margen)[0]||{};
+
+    const byMesDetalle={};
+    vRows.slice(1).forEach(r=>{
+      const prodId=r[iV_ID]; if(!prodId)return;
+      const prod=productos[prodId]||{}, cant=n(r[iV_CANT]), total=n(r[iV_TOTAL]), costo=(prod.costo||0)*cant;
+      const fecha=getMes(r[iV_FECHA])||'Sin fecha';
+      if(!byMesDetalle[fecha])byMesDetalle[fecha]={venta:0,costo:0};
+      byMesDetalle[fecha].venta+=total; byMesDetalle[fecha].costo+=costo;
+    });
+    const byMesGasto={};
+    gRows.slice(1).forEach(r=>{
+      const monto=n(r[iG_MONTO]),cat=r[iG_CAT]||'Otros';
+      const fecha=getMes(r[iG_FECHA])||'Sin fecha';
+      if(!byMesGasto[fecha])byMesGasto[fecha]={}; if(!byMesGasto[fecha][cat])byMesGasto[fecha][cat]=0; byMesGasto[fecha][cat]+=monto;
+    });
+    const allYears=[...new Set([...Object.keys(byMesDetalle).map(m=>m.substring(0,4)),...Object.keys(byMesGasto).map(m=>m.substring(0,4))])].sort();
+    const meses=[]; allYears.forEach(y=>{for(let mo=1;mo<=12;mo++)meses.push(y+'-'+String(mo).padStart(2,'0'));});
+    const gastoCats=[...new Set(Object.values(byMesGasto).flatMap(obj=>Object.keys(obj)))].sort();
+    const totVenta=meses.reduce((s,m)=>s+(byMesDetalle[m]?.venta||0),0);
+    const totCosto=meses.reduce((s,m)=>s+(byMesDetalle[m]?.costo||0),0);
+    const totBruta=totVenta-totCosto;
+    const totGastoCat={}; gastoCats.forEach(cat=>{totGastoCat[cat]=meses.reduce((s,m)=>s+(byMesGasto[m]?.[cat]||0),0);});
+    const totGastosOp=gastoCats.reduce((s,c)=>s+totGastoCat[c],0);
+    const totNeta=totBruta-totGastosOp, totMargenBruto=totVenta?(totBruta/totVenta*100):0;
+    const ratioCV=totVenta?(totCosto/totVenta):0, margenContrib=1-ratioCV;
+    const puntEquilibrio=margenContrib>0?(totGastosOp/margenContrib):0;
+    const peBrecha=totVenta-puntEquilibrio, peCobertura=puntEquilibrio>0?(totVenta/puntEquilibrio*100):0;
+
+    _ctx = { totalIngresos, totalCostoVentas, ganBruta, totalGastos, utilNeta, margenBruto,
+             prodList, byGastoCat, byCategoria, byMes, puntEquilibrio, peBrecha, peCobertura,
+             margenContrib, ratioCV, topProd, topRentable, topVolumen, topGasto, bottomRent };
+
+    $('kIngresos').textContent=fmt(totalIngresos); $('kIngSub').textContent=prodList.length+' productos - '+(vRows.length-1)+' transacciones';
+    $('kGastos').textContent=fmt(totalGastos); $('kGasSub').textContent=Object.keys(byGastoCat).length+' categorias';
+    $('kCostoV').textContent=fmt(totalCostoVentas); $('kCVSub').textContent=pct(totalCostoVentas,totalIngresos)+' de los ingresos';
+    $('kBruta').textContent=fmt(ganBruta); $('kBSub').textContent='Margen bruto: '+margenBruto.toFixed(1)+'%';
+    const netaEl=$('kNeta'); netaEl.textContent=(utilNeta<0?'-':'')+fmt(utilNeta); netaEl.className='kpi-value '+(utilNeta>=0?'pos':'neg');
+    $('kNetaSub').textContent='Rentabilidad neta: '+pct(utilNeta,totalIngresos);
+    $('reportDate').textContent='Actualizado: '+new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+    $('hlTopProd').textContent=topProd.nombre||'-'; $('hlTopMeta').textContent=fmt(topProd.venta||0)+' en ventas';
+    $('hlTopRent').textContent=topRentable.nombre||'-'; $('hlTopRentMeta').textContent=(topRentable.margen||0).toFixed(1)+'% de margen';
+    $('hlTopVol').textContent=topVolumen.nombre||'-'; $('hlTopVolMeta').textContent=(topVolumen.cantidad||0)+' unidades';
+    $('hlTopGasto').textContent=topGasto[0]||'-'; $('hlTopGastoMeta').textContent=fmt(topGasto[1]||0)+' - '+pct(topGasto[1]||0,totalGastos);
+
+    const MN=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const fmtMes=m=>{const[y,mo]=m.split('-');return MN[parseInt(mo)-1]+" '"+y.substring(2);};
+    const cell=(val,cls='')=>`<td class="${cls}">${val===0?'<span style="color:#d1d5db">-</span>':fmt(val)}</td>`;
+    const cellPct=(val,cls='')=>`<td class="${cls}" style="font-size:9px;color:#6b7280">${isFinite(val)&&val!==0?val.toFixed(1)+'%':'-'}</td>`;
+    const cellNeta=(val,cls='')=>`<td class="${cls} ${val<0?'neg':val>0?'pos':''}">${val===0?'-':fmt(val)}</td>`;
+    const cols=meses.length+1;
+    let html='<thead>';
+    if(allYears.length>1){
+      html+='<tr><th rowspan="2" style="text-align:left;min-width:150px;vertical-align:bottom">Concepto</th>';
+      allYears.forEach(y=>{html+=`<th colspan="12" style="text-align:center;border-bottom:1px solid #374151">${y}</th>`;});
+      html+='<th rowspan="2" class="col-total" style="vertical-align:bottom">TOTAL</th></tr><tr>';
+      allYears.forEach(()=>{MN.forEach(mn=>html+=`<th>${mn}</th>`);});
+      html+='</tr>';
+    } else {
+      html+=`<tr><th style="text-align:left;min-width:150px">Concepto ${allYears[0]||''}</th>`;
+      meses.forEach(m=>html+=`<th>${fmtMes(m)}</th>`);
+      html+='<th class="col-total">TOTAL</th></tr>';
+    }
+    html+='</thead><tbody>';
+    html+=`<tr class="row-section-hd"><td colspan="${cols+1}">INGRESOS</td></tr>`;
+    html+='<tr class="row-ingresos"><td>Ventas Netas</td>'; meses.forEach(m=>html+=cell(byMesDetalle[m]?.venta||0)); html+=cell(totVenta,'col-total')+'</tr>';
+    html+='<tr class="row-costo"><td class="row-indent">Costo de Ventas</td>'; meses.forEach(m=>html+=cell(byMesDetalle[m]?.costo||0)); html+=cell(totCosto,'col-total')+'</tr>';
+    html+='<tr class="row-bruta"><td>GANANCIA BRUTA</td>'; meses.forEach(m=>{const v=(byMesDetalle[m]?.venta||0)-(byMesDetalle[m]?.costo||0);html+=cell(v);}); html+=cell(totBruta,'col-total')+'</tr>';
+    html+='<tr class="row-pct"><td class="row-indent" style="color:#9ca3af">Margen Bruto %</td>'; meses.forEach(m=>{const v=byMesDetalle[m]?.venta||0,b=v-(byMesDetalle[m]?.costo||0);html+=cellPct(v?b/v*100:0);}); html+=cellPct(totMargenBruto,'col-total')+'</tr>';
+    html+=`<tr class="row-sep"><td colspan="${cols+1}"></td></tr>`;
+    html+=`<tr class="row-section-hd"><td colspan="${cols+1}">GASTOS OPERATIVOS</td></tr>`;
+    gastoCats.forEach(cat=>{html+=`<tr class="row-cat"><td class="row-indent">- ${cat}</td>`;meses.forEach(m=>html+=cell(byMesGasto[m]?.[cat]||0));html+=cell(totGastoCat[cat],'col-total')+'</tr>';});
+    html+='<tr class="row-gasto"><td>TOTAL GASTOS</td>'; meses.forEach(m=>{const t=gastoCats.reduce((s,c)=>s+(byMesGasto[m]?.[c]||0),0);html+=cell(t);}); html+=cell(totGastosOp,'col-total')+'</tr>';
+    html+=`<tr class="row-sep"><td colspan="${cols+1}"></td></tr>`;
+    html+='<tr class="row-neta"><td>UTILIDAD NETA</td>'; meses.forEach(m=>{const v=byMesDetalle[m]?.venta||0,c=byMesDetalle[m]?.costo||0,g=gastoCats.reduce((s,cat)=>s+(byMesGasto[m]?.[cat]||0),0);html+=cellNeta(v-c-g);}); html+=cellNeta(totNeta,'col-total')+'</tr>';
+    html+='<tr class="row-pct row-pct-neta"><td class="row-indent" style="color:#9ca3af">Rentabilidad %</td>'; meses.forEach(m=>{const v=byMesDetalle[m]?.venta||0,c=byMesDetalle[m]?.costo||0,g=gastoCats.reduce((s,cat)=>s+(byMesGasto[m]?.[cat]||0),0);html+=cellPct(v?(v-c-g)/v*100:0);}); html+=cellPct(totVenta?totNeta/totVenta*100:0,'col-total')+'</tr></tbody>';
+    $('plTable').innerHTML=html;
+
+    const peColor=peBrecha>=0?'#10b981':'#ef4444';
+    const peMsg=peBrecha>=0?`Ventas superan el PE por <b>${fmt(peBrecha)}</b> (${peCobertura.toFixed(0)}% cubierto)`:`Faltan <b>${fmt(Math.abs(peBrecha))}</b> para cubrir todos los costos`;
+    $('peCard').innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px"><div style="text-align:center;padding:10px;background:#f8fafc;border-radius:6px;border-top:3px solid #8b5cf6"><div style="font-size:9px;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Punto de Equilibrio</div><div style="font-size:18px;font-weight:800">${fmt(puntEquilibrio)}</div></div><div style="text-align:center;padding:10px;background:#f8fafc;border-radius:6px;border-top:3px solid #ef4444"><div style="font-size:9px;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Costos Fijos</div><div style="font-size:18px;font-weight:800;color:#ef4444">${fmt(totGastosOp)}</div></div><div style="text-align:center;padding:10px;background:#f8fafc;border-radius:6px;border-top:3px solid #f59e0b"><div style="font-size:9px;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Ratio CV</div><div style="font-size:18px;font-weight:800;color:#f59e0b">${(ratioCV*100).toFixed(1)}%</div></div><div style="text-align:center;padding:10px;background:#f8fafc;border-radius:6px;border-top:3px solid #3b82f6"><div style="font-size:9px;color:#6b7280;text-transform:uppercase;margin-bottom:4px">Margen Contrib.</div><div style="font-size:18px;font-weight:800;color:#3b82f6">${(margenContrib*100).toFixed(1)}%</div></div></div><div style="background:${peBrecha>=0?'#f0fdf4':'#fef9c3'};border-left:3px solid ${peColor};padding:8px 12px;border-radius:4px;font-size:11px;color:#374151;margin-bottom:10px">${peMsg}</div><div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">Cobertura (${peCobertura.toFixed(0)}%)</div><div style="background:#e5e7eb;border-radius:4px;height:10px;overflow:hidden"><div style="background:${peColor};height:10px;width:${Math.min(peCobertura,100).toFixed(0)}%;border-radius:4px"></div></div></div>`;
+
+    $('prodRows').innerHTML=prodList.map((p,i)=>`<div class="prod-row"><div class="prod-name">${i===0?'<span class="badge-1">★ #1</span> ':''}${p.nombre}</div><div class="prod-val">${fmt(p.venta)}</div><div class="prod-val green">${fmt(p.ganancia)}</div><div class="prod-val">${p.margen.toFixed(1)}%</div></div>`).join('');
+
+    const palette=['#ef4444','#f59e0b','#8b5cf6','#3b82f6','#14b8a6','#ec4899'];
+    const gastosSorted=Object.entries(byGastoCat).sort((a,b)=>b[1]-a[1]);
+    new Chart($('chartGastos'),{type:'doughnut',data:{labels:gastosSorted.map(([k])=>k),datasets:[{data:gastosSorted.map(([,v])=>v),backgroundColor:palette,borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:9},padding:6,boxWidth:10}}}}});
+    const catLabels=Object.keys(byCategoria),catVals=catLabels.map(c=>byCategoria[c].venta);
+    new Chart($('chartCat'),{type:'doughnut',data:{labels:catLabels,datasets:[{data:catVals,backgroundColor:['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#14b8a6'],borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:9},padding:6,boxWidth:10}}}}});
+
+    let alertsHTML='';
+    if(utilNeta<0)alertsHTML+=`<div class="alert warn"><div><b>Utilidad neta negativa:</b> Los gastos superan la ganancia bruta por ${fmt(Math.abs(utilNeta))}.</div></div>`;
+    if(margenBruto<20)alertsHTML+=`<div class="alert warn"><div><b>Margen bruto bajo (${margenBruto.toFixed(1)}%).</b> Revisar precios o costos.</div></div>`;
+    if(ignoredVentas > 0)alertsHTML+=`<div class="alert info"><div><b>Aviso:</b> Se ignoraron ${ignoredVentas} filas en Ventas por falta de ID de Producto.</div></div>`;
+    $('alerts').innerHTML=alertsHTML;
+
+    $('loader').style.display='none'; $('dashboard').style.display='block';
+    log('Panel actualizado correctamente');
+  } catch(e) { log('Error: '+e.message); $('loader').innerHTML='<p style="color:#ef4444">Error: '+e.message+'</p>'; console.error(e); }
+}
+
+// Start fetching data
+initDashboard();
+</script>
